@@ -15,6 +15,7 @@ func main() {
 	args := os.Args
 	// fmt.Println(args)
 
+	// TODO: add args -o [output dir] - use flag lib?
 	if len(args) >= 2 {
 		path := args[1]
 
