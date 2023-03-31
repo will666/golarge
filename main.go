@@ -67,26 +67,28 @@ func listFiles(path string) {
 					total++
 					saveToFile(logFile, f)
 				}
+			} else {
+				log.Println(err.Error())
 			}
 		}
 	} else {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 	}
 }
 
 func saveToFile(dst string, file string) {
 	f, err := os.OpenFile(dst, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 	}
 	defer f.Close()
 
 	if _, err := os.Stat(dst); err == nil && total == 1 {
 		f.Truncate(0)
 	} else {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 	}
 	if _, err := f.WriteString(fmt.Sprintf("%s\n", file)); err != nil {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 	}
 }
