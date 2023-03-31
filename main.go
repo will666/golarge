@@ -11,10 +11,15 @@ import (
 
 const BIG_FILE_SIZE int64 = 1_000_000_000
 
+var logging bool = false
 var logFile string
+
+var entries []string
 var total int = 0
 var blue = color.New(color.FgCyan, color.Bold)
 var green = color.New(color.FgGreen, color.Bold)
+var yellow = color.New(color.FgYellow, color.Bold)
+var red = color.New(color.FgRed, color.Bold)
 
 func main() {
 	var output string
@@ -34,12 +39,12 @@ func main() {
 		path = string(args[0])
 
 		if flag.NFlag() == 1 && output != "" {
+			logging = true
 			logFile = output
-		} else {
-			logFile = "list.txt"
 		}
 		log.Printf("-- Searching large files in %s --", blue.Sprintf(path))
 		listFiles(path)
+		// log.Println(entries)
 		log.Printf("-- Found %d files of size around 1GB --", total)
 		log.Printf("-- List generated: %s --", blue.Sprintf(logFile))
 	} else {
@@ -65,30 +70,34 @@ func listFiles(path string) {
 					f := fmt.Sprintf("%s/%s => %dMB", path, name, size/1024/1024)
 					log.Println(green.Sprintf(f))
 					total++
-					saveToFile(logFile, f)
+					entries = append(entries, f)
+					if logging {
+						saveToFile(logFile, f)
+					}
 				}
 			} else {
-				log.Println(err.Error())
+				log.Println(yellow.Sprintf(err.Error()))
 			}
 		}
 	} else {
-		log.Println(err.Error())
+		log.Println(yellow.Sprintf(err.Error()))
 	}
 }
 
 func saveToFile(dst string, file string) {
 	f, err := os.OpenFile(dst, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Println(err.Error())
+		log.Println(red.Sprintf(err.Error()))
 	}
 	defer f.Close()
 
 	if _, err := os.Stat(dst); err == nil && total == 1 {
 		f.Truncate(0)
-	} else {
-		log.Println(err.Error())
+	} else if err != nil {
+		log.Println(red.Sprintf(err.Error()))
 	}
+
 	if _, err := f.WriteString(fmt.Sprintf("%s\n", file)); err != nil {
-		log.Println(err.Error())
+		log.Println(red.Sprintf(err.Error()))
 	}
 }
