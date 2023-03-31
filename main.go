@@ -1,51 +1,48 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
 )
 
-const BIG_FILE_SIZE int64 = 1000_000_000
-const FILE_LIST = "./list.txt"
+const BIG_FILE_SIZE int64 = 1_000_000_000
+
+var FILE_LIST string
 
 var total int = 0
 
 func main() {
-	args := os.Args
-	// fmt.Println(args)
+	var output string
+	var help bool
+	flag.StringVar(&output, "o", "list.txt", "Write output to file")
+	flag.BoolVar(&help, "help", false, "Help")
+	flag.Parse()
+	args := flag.Args()
 
-	// TODO: add args -o [output dir] - use flag lib?
-	if len(args) >= 2 {
-		path := args[1]
+	if help {
+		flag.PrintDefaults()
+	}
 
-		log.Println("Searching large files on", path)
-		fmt.Println("")
+	var path string
 
-		f, err := os.OpenFile(FILE_LIST, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
+	if flag.NArg() == 1 {
+		path = string(args[0])
 
-		if _, err := os.Stat(FILE_LIST); err == nil {
-			f.Truncate(0)
+		if flag.NFlag() == 1 && output != "" {
+			FILE_LIST = output
 		} else {
-			log.Fatal(err)
+			FILE_LIST = "list.txt"
 		}
-
+		log.Printf("-- Searching large files in %s --", path)
 		listFiles(path)
-
-		fmt.Println("")
-		log.Println("[Found", total, "files over 1GB]")
+		log.Printf("-- Found %d files of size around 1GB --", total)
+		log.Printf("-- List generated: %s --", FILE_LIST)
 	} else {
-		fmt.Println("")
 		fmt.Println("Usage: golarge PATH")
-		fmt.Println("")
 		fmt.Println("An util to list large files from a given directory path")
-		fmt.Println("")
-		fmt.Println("Example: golarge /tmp")
-		fmt.Println("")
+		fmt.Println("Example: golarge ~/")
 		os.Exit(0)
 	}
 }
@@ -60,9 +57,10 @@ func listFiles(path string) {
 				name := info.Name()
 				size := info.Size()
 				if size >= BIG_FILE_SIZE {
-					fmt.Printf("%s/%s => %dMB\n", path, name, size/1024/1024)
+					res := fmt.Sprintf("%s/%s => %dMB", path, name, size/1024/1024)
+					log.Println(res)
 					total++
-					saveToFile(FILE_LIST, fmt.Sprintf("%s/%s", path, name))
+					saveToFile(FILE_LIST, res)
 				}
 			}
 		}
@@ -75,6 +73,12 @@ func saveToFile(dst string, file string) {
 		log.Fatal(err)
 	}
 	defer f.Close()
+
+	if _, err := os.Stat(dst); err == nil && total == 1 {
+		f.Truncate(0)
+	} else {
+		log.Fatal(err)
+	}
 	if _, err := f.WriteString(fmt.Sprintf("%s\n", file)); err != nil {
 		log.Fatal(err)
 	}
