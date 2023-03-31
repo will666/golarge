@@ -5,12 +5,16 @@ import (
 	"fmt"
 	"log"
 	"os"
+
+	"github.com/fatih/color"
 )
 
 const BIG_FILE_SIZE int64 = 1_000_000_000
 
 var logFile string
 var total int = 0
+var blue = color.New(color.FgCyan, color.Bold)
+var green = color.New(color.FgGreen, color.Bold)
 
 func main() {
 	var output string
@@ -34,14 +38,16 @@ func main() {
 		} else {
 			logFile = "list.txt"
 		}
-		log.Printf("-- Searching large files in %s --", path)
+		log.Printf("-- Searching large files in %s --", blue.Sprintf(path))
 		listFiles(path)
 		log.Printf("-- Found %d files of size around 1GB --", total)
-		log.Printf("-- List generated: %s --", logFile)
+		log.Printf("-- List generated: %s --", blue.Sprintf(logFile))
 	} else {
-		fmt.Println("Usage: golarge PATH")
-		fmt.Println("An util to list large files from a given directory path")
-		fmt.Println("Example: golarge ~/")
+		fmt.Println("\nMissing argument: PATH")
+		fmt.Println("Provide a directory as argument: /tmp")
+		fmt.Println("\nUsage: golarge PATH")
+		fmt.Println("An util to list large files of a given directory path")
+		fmt.Println("Example: ./golarge ~/")
 		os.Exit(0)
 	}
 }
@@ -56,10 +62,10 @@ func listFiles(path string) {
 				name := info.Name()
 				size := info.Size()
 				if size >= BIG_FILE_SIZE {
-					res := fmt.Sprintf("%s/%s => %dMB", path, name, size/1024/1024)
-					log.Println(res)
+					f := fmt.Sprintf("%s/%s => %dMB", path, name, size/1024/1024)
+					log.Println(green.Sprintf(f))
 					total++
-					saveToFile(logFile, res)
+					saveToFile(logFile, f)
 				}
 			}
 		}
