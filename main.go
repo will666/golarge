@@ -9,8 +9,7 @@ import (
 
 const BIG_FILE_SIZE int64 = 1_000_000_000
 
-var FILE_LIST string
-
+var logFile string
 var total int = 0
 
 func main() {
@@ -31,14 +30,14 @@ func main() {
 		path = string(args[0])
 
 		if flag.NFlag() == 1 && output != "" {
-			FILE_LIST = output
+			logFile = output
 		} else {
-			FILE_LIST = "list.txt"
+			logFile = "list.txt"
 		}
 		log.Printf("-- Searching large files in %s --", path)
 		listFiles(path)
 		log.Printf("-- Found %d files of size around 1GB --", total)
-		log.Printf("-- List generated: %s --", FILE_LIST)
+		log.Printf("-- List generated: %s --", logFile)
 	} else {
 		fmt.Println("Usage: golarge PATH")
 		fmt.Println("An util to list large files from a given directory path")
@@ -60,7 +59,7 @@ func listFiles(path string) {
 					res := fmt.Sprintf("%s/%s => %dMB", path, name, size/1024/1024)
 					log.Println(res)
 					total++
-					saveToFile(FILE_LIST, res)
+					saveToFile(logFile, res)
 				}
 			}
 		}
