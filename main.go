@@ -54,11 +54,15 @@ func main() {
 		log.Printf("-- Found %d files of size around 1GB --", total)
 		log.Printf("-- List generated: %s --", blue.Sprintf(logFile))
 	} else {
-		fmt.Println("\nMissing argument: PATH")
-		fmt.Println("Provide a directory as argument: /tmp")
-		fmt.Println("\nUsage: golarge PATH")
-		fmt.Println("An util to list large files of a given directory path")
-		fmt.Println("Example: ./golarge ~/")
+		fmt.Println("\nUsage: golarge [OPTIONS] PATH")
+		fmt.Println("\nUtil to find files around 1GB of size from given directory path")
+		fmt.Println("\nOptions:")
+		fmt.Println("  -o string   Full path of file to save large file list to (default: list.txt)")
+		fmt.Println("  -j          Enable export to JSON file")
+		fmt.Println("\nExamples:")
+		fmt.Println("  golarge /foo/bar")
+		fmt.Println("  golarge -o list.txt /foo/bar")
+		fmt.Println("  golarge -o list.txt -j /foo/bar")
 		os.Exit(0)
 	}
 }
