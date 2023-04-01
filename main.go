@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/fatih/color"
 )
 
 const BIG_FILE_SIZE int64 = 1_000_000_000
@@ -17,10 +16,6 @@ var logFile string
 
 var entries []types.List
 var total int = 0
-var blue = color.New(color.FgCyan, color.Bold)
-var green = color.New(color.FgGreen, color.Bold)
-var yellow = color.New(color.FgYellow, color.Bold)
-var red = color.New(color.FgRed, color.Bold)
 
 func main() {
 	var output string
@@ -45,14 +40,16 @@ func main() {
 			logging = true
 			logFile = output
 		}
-		log.Printf("-- Searching large files in %s --", blue.Sprintf(path))
+		log.Printf("-- Searching large files in %s --", helper.Colorize(path, "cyan"))
 		listFiles(path)
 		// log.Println(entries)
 		if jsonOutput {
 			saveToJson(entries)
 		}
 		log.Printf("-- Found %d files of size around 1GB --", total)
-		log.Printf("-- List generated: %s --", blue.Sprintf(logFile))
+		if logging {
+			log.Printf("-- List generated: %s --", helper.Colorize(logFile, "cyan"))
+		}
 	} else {
 		fmt.Println("\nUsage: golarge [OPTIONS] PATH")
 		fmt.Println("\nUtil to find files around 1GB of size from given directory path")
@@ -78,7 +75,7 @@ func listFiles(path string) {
 				size := info.Size()
 				if size >= BIG_FILE_SIZE {
 					f := fmt.Sprintf("%s/%s => %dMB", path, name, size/1024/1024)
-					log.Println(green.Sprintf(f))
+					log.Println(helper.Colorize(f, "green"))
 					total++
 					entries = append(entries, f)
 					if logging {
@@ -86,29 +83,29 @@ func listFiles(path string) {
 					}
 				}
 			} else {
-				log.Println(yellow.Sprintf(err.Error()))
+				log.Println(helper.Colorize(err.Error(), "yellow"))
 			}
 		}
 	} else {
-		log.Println(yellow.Sprintf(err.Error()))
+		log.Println(helper.Colorize(err.Error(), "yellow"))
 	}
 }
 
 func saveToFile(dst string, file string) {
 	f, err := os.OpenFile(dst, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Println(red.Sprintf(err.Error()))
+		log.Println(helper.Colorize(err.Error(), "red"))
 	}
 	defer f.Close()
 
 	if _, err := os.Stat(dst); err == nil && total == 1 {
 		f.Truncate(0)
 	} else if err != nil {
-		log.Println(red.Sprintf(err.Error()))
+		log.Println(helper.Colorize(err.Error(), "red"))
 	}
 
 	if _, err := f.WriteString(fmt.Sprintf("%s\n", file)); err != nil {
-		log.Println(red.Sprintf(err.Error()))
+		log.Println(helper.Colorize(err.Error(), "red"))
 func saveToJson(list []types.List) {
 	if content, err := json.Marshal(list); err == nil {
 		fileName := helper.ExtLess(logFile)
