@@ -76,7 +76,7 @@ func listFiles(path string) {
 				name := info.Name()
 				size := info.Size()
 				if size >= BIG_FILE_SIZE {
-					f := fmt.Sprintf("%s/%s => %dMB", path, name, size/1024/1024)
+					f := fmt.Sprintf("%s/%s => %dMB", path, name, size/(1024*1024))
 					log.Println(helper.Colorize(f, "green"))
 					total++
 					entries = append(entries, types.List{Name: name, BasePath: path, FullPath: fmt.Sprintf("%s/%s", path, name), Size: size, Type: filepath.Ext(name)})
