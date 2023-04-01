@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/will666/golarge/helper"
+	"github.com/will666/golarge/types"
 )
 
 const BIG_FILE_SIZE int64 = 1_000_000_000
