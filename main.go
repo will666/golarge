@@ -27,7 +27,9 @@ func main() {
 	var path string
 
 	flag.StringVar(&fileOutput, "o", "list.txt", "Write output to text file")
+	flag.StringVar(&fileOutput, "output", "list.txt", "Write output to text file")
 	flag.BoolVar(&jsonOutput, "j", false, "Ouput list to JSON file")
+	flag.BoolVar(&jsonOutput, "json", false, "Ouput list to JSON file")
 	flag.BoolVar(&help, "help", false, "Help")
 	flag.Parse()
 	args := flag.Args()
@@ -56,12 +58,12 @@ func main() {
 		fmt.Println("\nUsage: golarge [OPTIONS] PATH")
 		fmt.Println("\nUtil to find files around 1GB of size from given directory path")
 		fmt.Println("\nOptions:")
-		fmt.Println("  -o string   Full path of file to save large file list to (default: list.txt)")
-		fmt.Println("  -j          Enable export to JSON file")
+		fmt.Println("  -o, --output   string   Full path of file to save large file list to (default: list.txt)")
+		fmt.Println("  -j, --json      				 Enable export to JSON file")
 		fmt.Println("\nExamples:")
 		fmt.Println("  golarge /foo/bar")
 		fmt.Println("  golarge -o list.txt /foo/bar")
-		fmt.Println("  golarge -o list.txt -j /foo/bar")
+		fmt.Println("  golarge --output list.txt --json /foo/bar")
 		os.Exit(0)
 	}
 }
