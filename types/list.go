@@ -5,4 +5,5 @@ type List struct {
 	BasePath string `json:"basePath"`
 	FullPath string `json:"fullPath"`
 	Size     int64  `json:"size"`
+	Type     string `json:"type"`
 }
