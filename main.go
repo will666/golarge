@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -14,7 +15,7 @@ const BIG_FILE_SIZE int64 = 1_000_000_000
 var logging bool = false
 var logFile string
 
-var entries []string
+var entries []types.List
 var total int = 0
 var blue = color.New(color.FgCyan, color.Bold)
 var green = color.New(color.FgGreen, color.Bold)
@@ -23,8 +24,10 @@ var red = color.New(color.FgRed, color.Bold)
 
 func main() {
 	var output string
+	var jsonOutput bool
 	var help bool
 	flag.StringVar(&output, "o", "list.txt", "Write output to file")
+	flag.BoolVar(&jsonOutput, "j", false, "Ouput list to JSON file")
 	flag.BoolVar(&help, "help", false, "Help")
 	flag.Parse()
 	args := flag.Args()
@@ -45,6 +48,9 @@ func main() {
 		log.Printf("-- Searching large files in %s --", blue.Sprintf(path))
 		listFiles(path)
 		// log.Println(entries)
+		if jsonOutput {
+			saveToJson(entries)
+		}
 		log.Printf("-- Found %d files of size around 1GB --", total)
 		log.Printf("-- List generated: %s --", blue.Sprintf(logFile))
 	} else {
@@ -99,5 +105,11 @@ func saveToFile(dst string, file string) {
 
 	if _, err := f.WriteString(fmt.Sprintf("%s\n", file)); err != nil {
 		log.Println(red.Sprintf(err.Error()))
+func saveToJson(list []types.List) {
+	if content, err := json.Marshal(list); err == nil {
+		fileName := helper.ExtLess(logFile)
+		os.WriteFile(fmt.Sprintf("%s.json", fileName), content, 0644)
+	} else {
+		log.Fatalln(err.Error())
 	}
 }
