@@ -20,10 +20,12 @@ var entries []types.List
 var total int = 0
 
 func main() {
-	var output string
+	var fileOutput string
 	var jsonOutput bool
 	var help bool
-	flag.StringVar(&output, "o", "list.txt", "Write output to file")
+	var path string
+
+	flag.StringVar(&fileOutput, "o", "list.txt", "Write output to text file")
 	flag.BoolVar(&jsonOutput, "j", false, "Ouput list to JSON file")
 	flag.BoolVar(&help, "help", false, "Help")
 	flag.Parse()
@@ -33,18 +35,15 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	var path string
-
 	if flag.NArg() == 1 {
 		path = string(args[0])
 
-		if flag.NFlag() == 1 && output != "" {
+		if flag.NFlag() >= 1 && fileOutput != "" {
 			logging = true
-			logFile = output
+			logFile = fileOutput
 		}
 		log.Printf("-- Searching large files in %s --", helper.Colorize(path, "cyan"))
 		listFiles(path)
-		// log.Println(entries)
 		if jsonOutput {
 			saveToJson(entries)
 		}
@@ -108,6 +107,9 @@ func saveToFile(dst string, file string) {
 
 	if _, err := f.WriteString(fmt.Sprintf("%s\n", file)); err != nil {
 		log.Println(helper.Colorize(err.Error(), "red"))
+	}
+}
+
 func saveToJson(list []types.List) {
 	if content, err := json.Marshal(list); err == nil {
 		fileName := helper.ExtLess(logFile)
