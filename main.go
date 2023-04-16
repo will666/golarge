@@ -48,7 +48,7 @@ func main() {
 		log.Printf("-- Searching large files in %s --", helper.Colorize(path, "cyan"))
 		listFiles(path)
 		if jsonOutput {
-			saveToJson(entries)
+			go saveToJson(entries)
 		}
 		log.Printf("-- Found %d files of size around 1GB --", total)
 		if logging {
@@ -84,7 +84,7 @@ func listFiles(path string) {
 					total++
 					entries = append(entries, types.List{Name: name, BasePath: path, FullPath: fmt.Sprintf("%s/%s", path, name), Size: size, Type: filepath.Ext(name)})
 					if logging {
-						saveToFile(logFile, f)
+						go saveToFile(logFile, f)
 					}
 				}
 			} else {
