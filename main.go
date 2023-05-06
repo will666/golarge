@@ -4,27 +4,26 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
-
-	"github.com/will666/golarge/helper"
-	"github.com/will666/golarge/types"
+	"sync"
 )
 
-const BIG_FILE_SIZE int64 = 1_000_000_000
+// const BIG_FILE_SIZE int64 = 1_000_000_000
+const BIG_FILE_SIZE int64 = (1024 * 1024 * 1024)
 
-var logging bool = false
-var logFile string
-
-var entries []types.List
 var total int = 0
+var logging bool = false
 
 func main() {
+	var path string
+	var logFile string
 	var fileOutput string
 	var jsonOutput bool
 	var help bool
-	var path string
 
 	flag.StringVar(&fileOutput, "o", "list.txt", "Write output to text file")
 	flag.StringVar(&fileOutput, "output", "list.txt", "Write output to text file")
@@ -45,14 +44,18 @@ func main() {
 			logging = true
 			logFile = fileOutput
 		}
-		log.Printf("-- Searching large files in %s --", helper.Colorize(path, "cyan"))
-		listFiles(path)
-		if jsonOutput {
-			go saveToJson(entries)
+		log.Printf("-- Searching large files in %s --", Colorize(path, "cyan"))
+		fl := newFileList()
+		if err := fl.listFiles(path, logFile); err != nil {
+			log.Fatal("%w", err)
 		}
-		log.Printf("-- Found %d files of size around 1GB --", total)
+		if jsonOutput {
+			jsonFile := newJsontFile(logFile, fl.Data)
+			jsonFile.saveToJson()
+		}
+		log.Printf("-- Found %d files with size bigger than 1GB --", total)
 		if logging {
-			log.Printf("-- List generated: %s --", helper.Colorize(logFile, "cyan"))
+			log.Printf("-- List generated: %s --", Colorize(logFile, "cyan"))
 		}
 	} else {
 		fmt.Println("\nUsage: golarge [OPTIONS] PATH")
@@ -69,56 +72,112 @@ func main() {
 	}
 }
 
-func listFiles(path string) {
-	if files, err := os.ReadDir(path); err == nil {
+func (fl *FileList) listFiles(filePath string, logFile string) error {
+	if files, err := os.ReadDir(filePath); err == nil {
+		wg := &sync.WaitGroup{}
 		for _, v := range files {
 			if v.IsDir() {
-				listFiles(fmt.Sprintf("%s/%s", path, v.Name()))
-			}
-			if info, err := v.Info(); err == nil {
-				name := info.Name()
-				size := info.Size()
-				if size >= BIG_FILE_SIZE {
-					f := fmt.Sprintf("%s/%s => %dMiB", path, name, size/(1024*1024))
-					log.Println(helper.Colorize(f, "green"))
-					total++
-					entries = append(entries, types.List{Name: name, BasePath: path, FullPath: fmt.Sprintf("%s/%s", path, name), Size: size, Type: filepath.Ext(name)})
-					if logging {
-						go saveToFile(logFile, f)
-					}
-				}
+				fl.listFiles(path.Join(filePath, v.Name()), logFile)
 			} else {
-				log.Println(helper.Colorize(err.Error(), "yellow"))
+				wg.Add(1)
+				go func(v fs.DirEntry) {
+					if info, err := v.Info(); err == nil {
+						name := info.Name()
+						size := info.Size()
+						if size >= BIG_FILE_SIZE {
+							data := fmt.Sprintf("%s => %dMiB", path.Join(filePath, name), size/(1024*1024))
+							log.Println(Colorize(data, "green"))
+							total++
+							fl.MU.Lock()
+							fl.Data = append(fl.Data, List{Name: name, BasePath: filePath, FullPath: path.Join(filePath, name), Size: size, Type: filepath.Ext(name)})
+							fl.MU.Unlock()
+							if logging {
+								txtFile := newTxtFile(logFile, data)
+								if err := txtFile.saveToFile(); err != nil {
+									log.Fatal("%w", err)
+								}
+							}
+						}
+					} else {
+						log.Println(Colorize(err.Error(), "yellow"))
+					}
+					wg.Done()
+				}(v)
 			}
 		}
+		wg.Wait()
 	} else {
-		log.Println(helper.Colorize(err.Error(), "yellow"))
+		log.Println(Colorize(err.Error(), "yellow"))
 	}
+
+	return nil
 }
 
-func saveToFile(dst string, file string) {
-	f, err := os.OpenFile(dst, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+func (tf *TxtFile) saveToFile() error {
+	tf.MU.Lock()
+	defer tf.MU.Unlock()
+
+	f, err := os.OpenFile(tf.FileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Println(helper.Colorize(err.Error(), "red"))
+		if err := fmt.Errorf("%w", err); err != nil {
+			return err
+		}
 	}
 	defer f.Close()
 
-	if _, err := os.Stat(dst); err == nil && total == 1 {
+	if _, err := os.Stat(tf.FileName); err == nil && total == 1 {
 		f.Truncate(0)
 	} else if err != nil {
-		log.Println(helper.Colorize(err.Error(), "red"))
+		if err := fmt.Errorf("%w", err); err != nil {
+			return err
+		}
 	}
 
-	if _, err := f.WriteString(fmt.Sprintf("%s\n", file)); err != nil {
-		log.Println(helper.Colorize(err.Error(), "red"))
+	if _, err := f.WriteString(fmt.Sprintf("%s\n", tf.Data)); err != nil {
+		if err := fmt.Errorf("%w", err); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (js *JsonFile) saveToJson() error {
+	if content, err := json.Marshal(&js.Data); err == nil {
+		fileName := ExtLess(js.FileName)
+		err := os.WriteFile(fmt.Sprintf("%s.json", fileName), content, 0644)
+		if err != nil {
+			if err := fmt.Errorf("could not write to %s, error: %w", js.FileName, err); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := fmt.Errorf("JSON error: %w", err); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func newFileList() *FileList {
+	return &FileList{
+		Data: nil,
+		MU:   sync.Mutex{},
 	}
 }
 
-func saveToJson(list []types.List) {
-	if content, err := json.Marshal(list); err == nil {
-		fileName := helper.ExtLess(logFile)
-		os.WriteFile(fmt.Sprintf("%s.json", fileName), content, 0644)
-	} else {
-		log.Fatalln(err.Error())
+func newTxtFile(fileName string, data string) *TxtFile {
+	return &TxtFile{
+		FileName: fileName,
+		MU:       sync.Mutex{},
+		Data:     data,
+	}
+}
+
+func newJsontFile(fileName string, data []List) *JsonFile {
+	return &JsonFile{
+		FileName: fileName,
+		Data:     data,
 	}
 }
