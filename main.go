@@ -14,14 +14,9 @@ import (
 
 // const BIG_FILE_SIZE int64 = 1_000_000_000
 const BIG_FILE_SIZE int64 = (1024 * 1024 * 1024)
-
-var total int = 0
-var logging bool = false
 const DEBUG = false
 
 func main() {
-	var path string
-	var logFile string
 	if DEBUG {
 		// stat()
 		PrintMemUsage()
@@ -44,30 +39,35 @@ func main() {
 	}
 
 	if flag.NArg() == 1 {
-		path = string(args[0])
+		dirPath := string(args[0])
+		logging := false
+		var logFile string
 
 		if flag.NFlag() >= 1 && fileOutput != "" {
 			logging = true
 			logFile = fileOutput
 		}
-		log.Printf("-- Searching large files in %s --", Colorize(path, "cyan"))
+		log.Printf("-- Searching large files in %s --", Colorize(dirPath, "cyan"))
 		fl := newFileList()
-		if err := fl.listFiles(path, logFile); err != nil {
+		if err := fl.listFiles(dirPath, logging, logFile); err != nil {
 			log.Fatal("%w", err)
 		}
 		if jsonOutput {
-			jsonFile := newJsontFile(logFile, fl.Data)
+			jsonFile := newJsontFile(logFile, fl.data)
 			jsonFile.saveToJson()
 		}
-		log.Printf("-- Found %d files with size bigger than 1GB --", total)
+		log.Printf("-- Found %d files with size bigger than 1GiB --", fl.count)
 		if logging {
 			log.Printf("-- List generated: %s --", Colorize(logFile, "cyan"))
+			if jsonOutput {
+				log.Printf("-- List generated: %s --", Colorize(ExtLess(logFile)+".json", "cyan"))
+			}
 		}
 	} else {
 		fmt.Println("\nUsage: golarge [OPTIONS] PATH")
-		fmt.Println("\nUtil to find files around 1GB of size from given directory path")
+		fmt.Println("\nUtil to find files around 1GiB of size from given directory path")
 		fmt.Println("\nOptions:")
-		fmt.Println("  -o, --output string   Full path of file to save large file list to (default: list.txt)")
+		fmt.Println("  -o, --output string   	 Output path (default: list.txt)")
 		fmt.Println("  -j, --json      			 Enable export to JSON file")
 		fmt.Println("\nExamples:")
 		fmt.Println("  golarge /foo/bar")
@@ -82,28 +82,29 @@ func main() {
 	}
 }
 
-func (fl *FileList) listFiles(filePath string, logFile string) error {
+func (fl *fileList) listFiles(filePath string, logging bool, logFile string) error {
 	if files, err := os.ReadDir(filePath); err == nil {
-		wg := &sync.WaitGroup{}
+		wg := sync.WaitGroup{}
 		for _, v := range files {
 			if v.IsDir() {
-				fl.listFiles(path.Join(filePath, v.Name()), logFile)
+				fl.listFiles(path.Join(filePath, v.Name()), logging, logFile)
 			} else {
 				wg.Add(1)
 				go func(v fs.DirEntry) {
 					if info, err := v.Info(); err == nil {
-						name := info.Name()
-						size := info.Size()
-						if size >= BIG_FILE_SIZE {
-							data := fmt.Sprintf("%s => %dMiB", path.Join(filePath, name), size/(1024*1024))
+						fileSize := info.Size()
+						if fileSize >= BIG_FILE_SIZE {
+							fileName := info.Name()
+							data := fmt.Sprintf("%s => %dMiB", path.Join(filePath, fileName), fileSize/(1024*1024))
 							log.Println(Colorize(data, "green"))
-							total++
-							fl.MU.Lock()
-							fl.Data = append(fl.Data, List{Name: name, BasePath: filePath, FullPath: path.Join(filePath, name), Size: size, Type: filepath.Ext(name)})
-							fl.MU.Unlock()
+							nl := newList(fileName, filePath, path.Join(filePath, fileName), fileSize, filepath.Ext(fileName))
+							fl.Lock()
+							fl.data = append(fl.data, nl)
+							fl.count++
+							fl.Unlock()
 							if logging {
 								txtFile := newTxtFile(logFile, data)
-								if err := txtFile.saveToFile(); err != nil {
+								if err := txtFile.saveToFile(fl.count); err != nil {
 									log.Fatal("%w", err)
 								}
 							}
@@ -123,11 +124,11 @@ func (fl *FileList) listFiles(filePath string, logFile string) error {
 	return nil
 }
 
-func (tf *TxtFile) saveToFile() error {
-	tf.MU.Lock()
-	defer tf.MU.Unlock()
+func (tf *txtFile) saveToFile(entryCount int) error {
+	tf.Lock()
+	defer tf.Unlock()
 
-	f, err := os.OpenFile(tf.FileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(tf.fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		if err := fmt.Errorf("%w", err); err != nil {
 			return err
@@ -135,7 +136,7 @@ func (tf *TxtFile) saveToFile() error {
 	}
 	defer f.Close()
 
-	if _, err := os.Stat(tf.FileName); err == nil && total == 1 {
+	if _, err := os.Stat(tf.fileName); err == nil && entryCount == 1 {
 		f.Truncate(0)
 	} else if err != nil {
 		if err := fmt.Errorf("%w", err); err != nil {
@@ -143,7 +144,7 @@ func (tf *TxtFile) saveToFile() error {
 		}
 	}
 
-	if _, err := f.WriteString(fmt.Sprintf("%s\n", tf.Data)); err != nil {
+	if _, err := f.WriteString(fmt.Sprintf("%s\n", tf.data)); err != nil {
 		if err := fmt.Errorf("%w", err); err != nil {
 			return err
 		}
@@ -152,12 +153,12 @@ func (tf *TxtFile) saveToFile() error {
 	return nil
 }
 
-func (js *JsonFile) saveToJson() error {
-	if content, err := json.Marshal(&js.Data); err == nil {
-		fileName := ExtLess(js.FileName)
+func (js jsonFile) saveToJson() error {
+	if content, err := json.Marshal(js.data); err == nil {
+		fileName := ExtLess(js.fileName)
 		err := os.WriteFile(fmt.Sprintf("%s.json", fileName), content, 0644)
 		if err != nil {
-			if err := fmt.Errorf("could not write to %s, error: %w", js.FileName, err); err != nil {
+			if err := fmt.Errorf("could not write to %s, error: %w", js.fileName, err); err != nil {
 				return err
 			}
 		}
@@ -168,26 +169,4 @@ func (js *JsonFile) saveToJson() error {
 	}
 
 	return nil
-}
-
-func newFileList() *FileList {
-	return &FileList{
-		Data: nil,
-		MU:   sync.Mutex{},
-	}
-}
-
-func newTxtFile(fileName string, data string) *TxtFile {
-	return &TxtFile{
-		FileName: fileName,
-		MU:       sync.Mutex{},
-		Data:     data,
-	}
-}
-
-func newJsontFile(fileName string, data []List) *JsonFile {
-	return &JsonFile{
-		FileName: fileName,
-		Data:     data,
-	}
 }
