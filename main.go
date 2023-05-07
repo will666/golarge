@@ -17,10 +17,16 @@ const BIG_FILE_SIZE int64 = (1024 * 1024 * 1024)
 
 var total int = 0
 var logging bool = false
+const DEBUG = false
 
 func main() {
 	var path string
 	var logFile string
+	if DEBUG {
+		// stat()
+		PrintMemUsage()
+	}
+
 	var fileOutput string
 	var jsonOutput bool
 	var help bool
@@ -69,6 +75,10 @@ func main() {
 		fmt.Println("  golarge --output list.txt --json /foo/bar")
 		fmt.Println("")
 		os.Exit(0)
+	}
+
+	if DEBUG {
+		PrintMemUsage()
 	}
 }
 
