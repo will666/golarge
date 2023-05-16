@@ -18,7 +18,7 @@ func Capitalize(value string) string {
 	return fmt.Sprintf("%s%s", c, t)
 }
 
-func Colorize(value string, col string) string {
+func Colorize(value string, col string, style string) string {
 	var cl color.Attribute
 	switch strings.ToLower(col) {
 	case "blue":
@@ -37,6 +37,11 @@ func Colorize(value string, col string) string {
 		cl = color.FgWhite
 	}
 
-	fg := color.New(cl, color.Bold)
+	var fg *color.Color
+	if style != "" {
+		fg = color.New(cl, color.Bold)
+	} else {
+		fg = color.New(cl)
+	}
 	return fg.Sprintf(value)
 }
