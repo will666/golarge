@@ -22,4 +22,4 @@ debug:
 	go run $(DEBUG_FLAGS) $(TARGET) $(DIR)
 
 clean:
-	rm -rf logs *.txt *.json $(OUTPUT)
+	rm -rf logs *.txt *.json $(OUTPUT)/*
