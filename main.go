@@ -15,13 +15,15 @@ import (
 )
 
 // const BIG_FILE_SIZE int64 = 1_000_000_000
+// const LOG_PATH string = "./logs/" // testing
 const BIG_FILE_SIZE int64 = (1024 * 1024 * 1024)
 const DEBUG bool = false
-const LOG_PATH string = "/tmp/"
-const ERR_LOG_FILE string = LOG_PATH + "errors.log"
+const LOG_PATH string = "./tmp/"
+const ERR_LOG_FILE string = LOG_PATH + "golarge_errors.log"
 
 var unaccessibleDirectories int = 0
 var unreadableFiles int = 0
+var err_msg_pool []string
 
 func main() {
 	if DEBUG {
@@ -70,6 +72,17 @@ func main() {
 			jsonFile.saveToJson()
 		}
 
+		if !verbose {
+			var d string
+			for _, v := range err_msg_pool {
+				d += v
+			}
+			txtFile := newTxtFile(ERR_LOG_FILE, d)
+			if err := txtFile.saveToFile(1); err != nil {
+				log.Fatal("%w", err)
+			}
+		}
+
 		fmt.Println("")
 		fmt.Println("Results:")
 		fmt.Printf("  - found: %s %s\n", Colorize(strconv.Itoa(fl.count), "green", ""), Colorize("files with size bigger than 1GiB", "green", ""))
@@ -94,7 +107,7 @@ func main() {
 	}
 }
 
-func (fl *fileList) processFile(filePath string, v fs.DirEntry, logging bool, logFile string, verbose bool) {
+func (fl *fileList) processFile(filePath string, v fs.DirEntry, logging bool, logFile string, verbose bool, concurrent bool) {
 	if info, err := v.Info(); err == nil {
 		fileSize := info.Size()
 		if fileSize >= BIG_FILE_SIZE {
@@ -102,10 +115,14 @@ func (fl *fileList) processFile(filePath string, v fs.DirEntry, logging bool, lo
 			data := fmt.Sprintf("%s => %dMiB", path.Join(filePath, fileName), fileSize/(1024*1024))
 			fmt.Println(Colorize(data, "green", ""))
 			nl := newList(fileName, filePath, path.Join(filePath, fileName), fileSize, filepath.Ext(fileName))
-			fl.Lock()
+			if concurrent {
+				fl.Lock()
+			}
 			fl.data = append(fl.data, nl)
 			fl.count++
-			fl.Unlock()
+			if concurrent {
+				fl.Unlock()
+			}
 			if logging {
 				txtFile := newTxtFile(logFile, data)
 				if err := txtFile.saveToFile(fl.count); err != nil {
@@ -119,10 +136,7 @@ func (fl *fileList) processFile(filePath string, v fs.DirEntry, logging bool, lo
 		if !verbose {
 			t := time.Now()
 			data := fmt.Sprintf("[warning] %d/%d/%d %d:%d:%d - %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), err.Error())
-			txtFile := newTxtFile(ERR_LOG_FILE, data)
-			if err := txtFile.saveToFile(unreadableFiles); err != nil {
-				log.Fatal("%w", err)
-			}
+			err_msg_pool = append(err_msg_pool, data)
 		} else {
 			fmt.Println("[warning]", Colorize(err.Error(), "yellow", ""))
 		}
@@ -139,7 +153,7 @@ func (fl *fileList) listFiles(filePath string, logging bool, logFile string, ver
 				} else {
 					wg.Add(1)
 					go func(v fs.DirEntry) {
-						fl.processFile(filePath, v, logging, logFile, verbose)
+						fl.processFile(filePath, v, logging, logFile, verbose, concurrent)
 						wg.Done()
 					}(v)
 				}
@@ -150,7 +164,7 @@ func (fl *fileList) listFiles(filePath string, logging bool, logFile string, ver
 				if v.IsDir() {
 					fl.listFiles(path.Join(filePath, v.Name()), logging, logFile, verbose, concurrent)
 				} else {
-					fl.processFile(filePath, v, logging, logFile, verbose)
+					fl.processFile(filePath, v, logging, logFile, verbose, concurrent)
 				}
 			}
 		}
@@ -159,11 +173,8 @@ func (fl *fileList) listFiles(filePath string, logging bool, logFile string, ver
 
 		if !verbose {
 			t := time.Now()
-			data := fmt.Sprintf("[warning] %d/%d/%d %d:%d:%d - %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), err.Error())
-			txtFile := newTxtFile(ERR_LOG_FILE, data)
-			if err := txtFile.saveToFile(unaccessibleDirectories); err != nil {
-				log.Fatal("%w", err)
-			}
+			data := fmt.Sprintf("[warning] %d/%d/%d %d:%d:%d - %s\n", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), err.Error())
+			err_msg_pool = append(err_msg_pool, data)
 		} else {
 
 			fmt.Println("[warning]", Colorize(err.Error(), "yellow", ""))
