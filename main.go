@@ -9,12 +9,19 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"sync"
+	"time"
 )
 
 // const BIG_FILE_SIZE int64 = 1_000_000_000
 const BIG_FILE_SIZE int64 = (1024 * 1024 * 1024)
-const DEBUG = false
+const DEBUG bool = false
+const LOG_PATH string = "/tmp/"
+const ERR_LOG_FILE string = LOG_PATH + "errors.log"
+
+var unaccessibleDirectories int = 0
+var unreadableFiles int = 0
 
 func main() {
 	if DEBUG {
@@ -22,20 +29,26 @@ func main() {
 		PrintMemUsage()
 	}
 
+	tStart := time.Now()
+
 	var fileOutput string
 	var jsonOutput bool
 	var help bool
+	var verbose bool = false
+	var concurrent = false
 
 	flag.StringVar(&fileOutput, "o", "list.txt", "Write output to text file")
-	flag.StringVar(&fileOutput, "output", "list.txt", "Write output to text file")
 	flag.BoolVar(&jsonOutput, "j", false, "Ouput list to JSON file")
-	flag.BoolVar(&jsonOutput, "json", false, "Ouput list to JSON file")
-	flag.BoolVar(&help, "help", false, "Help")
+	flag.BoolVar(&verbose, "v", false, "Display warnings & errors")
+	flag.BoolVar(&concurrent, "t", false, "Process file analysis concurrently")
+	flag.BoolVar(&help, "h", false, "Display this help and exit")
 	flag.Parse()
 	args := flag.Args()
 
 	if help {
-		flag.PrintDefaults()
+		// flag.PrintDefaults()
+		usage()
+		os.Exit(0)
 	}
 
 	if flag.NArg() == 1 {
@@ -47,34 +60,33 @@ func main() {
 			logging = true
 			logFile = fileOutput
 		}
-		log.Printf("-- Searching large files in %s --", Colorize(dirPath, "cyan"))
+		fmt.Printf("\nLooking for files in %s\n\n", Colorize(dirPath, "blue", ""))
 		fl := newFileList()
-		if err := fl.listFiles(dirPath, logging, logFile); err != nil {
+		if err := fl.listFiles(dirPath, logging, logFile, verbose, concurrent); err != nil {
 			log.Fatal("%w", err)
 		}
 		if jsonOutput {
 			jsonFile := newJsontFile(logFile, fl.data)
 			jsonFile.saveToJson()
 		}
-		log.Printf("-- Found %d files with size bigger than 1GiB --", fl.count)
+
+		fmt.Println("")
+		fmt.Println("Results:")
+		fmt.Printf("  - found: %s %s\n", Colorize(strconv.Itoa(fl.count), "green", ""), Colorize("files with size bigger than 1GiB", "green", ""))
+		fmt.Printf("  - unreadable file(s):       %s\n", Colorize(strconv.Itoa(unreadableFiles), "blue", ""))
+		fmt.Printf("  - unaccessible directories: %s\n", Colorize(strconv.Itoa(unaccessibleDirectories), "blue", ""))
+		fmt.Printf("  - processing time:          %.2fs\n\n", time.Now().Sub(tStart).Seconds())
 		if logging {
-			log.Printf("-- List generated: %s --", Colorize(logFile, "cyan"))
+			fmt.Printf("Logs:\n")
+			fmt.Printf("  - List generated: %s\n", Colorize(logFile, "green", ""))
 			if jsonOutput {
-				log.Printf("-- List generated: %s --", Colorize(ExtLess(logFile)+".json", "cyan"))
+				fmt.Printf("  - List generated: %s\n", Colorize(ExtLess(logFile)+".json\n", "cyan", ""))
 			}
+			fmt.Println("")
 		}
 	} else {
-		fmt.Println("\nUsage: golarge [OPTIONS] PATH")
-		fmt.Println("\nUtil to find files around 1GiB of size from given directory path")
-		fmt.Println("\nOptions:")
-		fmt.Println("  -o, --output string   	 Output path (default: list.txt)")
-		fmt.Println("  -j, --json      			 Enable export to JSON file")
-		fmt.Println("\nExamples:")
-		fmt.Println("  golarge /foo/bar")
-		fmt.Println("  golarge -o list.txt /foo/bar")
-		fmt.Println("  golarge --output list.txt --json /foo/bar")
-		fmt.Println("")
-		os.Exit(0)
+		usage()
+		os.Exit(1)
 	}
 
 	if DEBUG {
@@ -82,43 +94,80 @@ func main() {
 	}
 }
 
-func (fl *fileList) listFiles(filePath string, logging bool, logFile string) error {
-	if files, err := os.ReadDir(filePath); err == nil {
-		wg := sync.WaitGroup{}
-		for _, v := range files {
-			if v.IsDir() {
-				fl.listFiles(path.Join(filePath, v.Name()), logging, logFile)
-			} else {
-				wg.Add(1)
-				go func(v fs.DirEntry) {
-					if info, err := v.Info(); err == nil {
-						fileSize := info.Size()
-						if fileSize >= BIG_FILE_SIZE {
-							fileName := info.Name()
-							data := fmt.Sprintf("%s => %dMiB", path.Join(filePath, fileName), fileSize/(1024*1024))
-							log.Println(Colorize(data, "green"))
-							nl := newList(fileName, filePath, path.Join(filePath, fileName), fileSize, filepath.Ext(fileName))
-							fl.Lock()
-							fl.data = append(fl.data, nl)
-							fl.count++
-							fl.Unlock()
-							if logging {
-								txtFile := newTxtFile(logFile, data)
-								if err := txtFile.saveToFile(fl.count); err != nil {
-									log.Fatal("%w", err)
-								}
-							}
-						}
-					} else {
-						log.Println(Colorize(err.Error(), "yellow"))
-					}
-					wg.Done()
-				}(v)
+func (fl *fileList) processFile(filePath string, v fs.DirEntry, logging bool, logFile string, verbose bool) {
+	if info, err := v.Info(); err == nil {
+		fileSize := info.Size()
+		if fileSize >= BIG_FILE_SIZE {
+			fileName := info.Name()
+			data := fmt.Sprintf("%s => %dMiB", path.Join(filePath, fileName), fileSize/(1024*1024))
+			fmt.Println(Colorize(data, "green", ""))
+			nl := newList(fileName, filePath, path.Join(filePath, fileName), fileSize, filepath.Ext(fileName))
+			fl.Lock()
+			fl.data = append(fl.data, nl)
+			fl.count++
+			fl.Unlock()
+			if logging {
+				txtFile := newTxtFile(logFile, data)
+				if err := txtFile.saveToFile(fl.count); err != nil {
+					log.Fatal("%w", err)
+				}
 			}
 		}
-		wg.Wait()
 	} else {
-		log.Println(Colorize(err.Error(), "yellow"))
+		unreadableFiles++
+
+		if !verbose {
+			t := time.Now()
+			data := fmt.Sprintf("[warning] %d/%d/%d %d:%d:%d - %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), err.Error())
+			txtFile := newTxtFile(ERR_LOG_FILE, data)
+			if err := txtFile.saveToFile(unreadableFiles); err != nil {
+				log.Fatal("%w", err)
+			}
+		} else {
+			fmt.Println("[warning]", Colorize(err.Error(), "yellow", ""))
+		}
+	}
+}
+
+func (fl *fileList) listFiles(filePath string, logging bool, logFile string, verbose bool, concurrent bool) error {
+	if files, err := os.ReadDir(filePath); err == nil {
+		if concurrent {
+			wg := sync.WaitGroup{}
+			for _, v := range files {
+				if v.IsDir() {
+					fl.listFiles(path.Join(filePath, v.Name()), logging, logFile, verbose, concurrent)
+				} else {
+					wg.Add(1)
+					go func(v fs.DirEntry) {
+						fl.processFile(filePath, v, logging, logFile, verbose)
+						wg.Done()
+					}(v)
+				}
+			}
+			wg.Wait()
+		} else {
+			for _, v := range files {
+				if v.IsDir() {
+					fl.listFiles(path.Join(filePath, v.Name()), logging, logFile, verbose, concurrent)
+				} else {
+					fl.processFile(filePath, v, logging, logFile, verbose)
+				}
+			}
+		}
+	} else {
+		unaccessibleDirectories++
+
+		if !verbose {
+			t := time.Now()
+			data := fmt.Sprintf("[warning] %d/%d/%d %d:%d:%d - %s", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), err.Error())
+			txtFile := newTxtFile(ERR_LOG_FILE, data)
+			if err := txtFile.saveToFile(unaccessibleDirectories); err != nil {
+				log.Fatal("%w", err)
+			}
+		} else {
+
+			fmt.Println("[warning]", Colorize(err.Error(), "yellow", ""))
+		}
 	}
 
 	return nil
@@ -158,15 +207,35 @@ func (js jsonFile) saveToJson() error {
 		fileName := ExtLess(js.fileName)
 		err := os.WriteFile(fmt.Sprintf("%s.json", fileName), content, 0644)
 		if err != nil {
-			if err := fmt.Errorf("could not write to %s, error: %w", js.fileName, err); err != nil {
+			if err := fmt.Errorf("[error] could not write to %s, error: %w", js.fileName, err); err != nil {
 				return err
 			}
 		}
 	} else {
-		if err := fmt.Errorf("JSON error: %w", err); err != nil {
+		if err := fmt.Errorf("[error] JSON: %w", err); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func usage() {
+	fmt.Println("")
+	fmt.Println("Usage: golarge [OPTIONS] <PATH>")
+	fmt.Println("")
+	fmt.Println("Look for files bigger than 1GiB from given directory path")
+	fmt.Println("")
+	fmt.Println("Options:")
+	fmt.Println("  -o <string>     Output path (default: list.txt)")
+	fmt.Println("  -j      	  Enable export to JSON file")
+	fmt.Println("  -v      	  Display warnings & error instead of logging to file")
+	fmt.Println("  -t      	  Enable concurrent file processing")
+	fmt.Println("")
+	fmt.Println("Examples:")
+	fmt.Println("  golarge /foo/bar")
+	fmt.Println("  golarge -v /bar")
+	fmt.Println("  golarge -o list.txt -j /foo/bar")
+	fmt.Println("  golarge -t /foo")
+	fmt.Println("")
 }
