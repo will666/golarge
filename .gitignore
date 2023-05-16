@@ -1,4 +1,5 @@
 golarge
 *.txt
 *.json
-bin/
+build/
+logs/
