@@ -1,16 +1,18 @@
 # golarge
 
-CLI that list files of about 1GB in size, recursively from a given directory path.
+Look for large files recursively from given directory path
 
 ## Features
 
-Output result to file via **-o** or **--output** flag (default destination: list.txt).
+- Recursively analyse files
+- export results to text file
+- export results to JSON file
+- logging to stdout or file
+- concurrent file processing
 
-Output result as JSON file via **-j** or **--json**. The destination file will be as specified in **-o** flag (default destination: list.json).
+## Manual build from source (local)
 
-## Build from source
-
-Install Go
+Install Go/Golang
 
 Follow [Installation instructions](https://go.dev/doc/install).
 
@@ -19,29 +21,75 @@ Clone the repository
 ```shell
 git clone https://github.com/will666/golarge.git
 cd golarge
-go build .
+make prod
 ```
 
-## Basic usage
+## Install binay (remote)
 
-See help
+Note: golang must be installed locally
 
 ```shell
-golarge help
+go install https://github.com/will666/golarge@latest
 ```
 
-Search large files at **/tmp**, save result to file **large_files.txt**.
+## Run binary (remote)
+
+Note: golang must be installed locally
 
 ```shell
-golarge -o large_files.txt /tmp
+go run https://github.com/will666/golarge@latest /foo
 ```
 
-Search large files at **/tmp**, save result to json format (default: **list.json**).
+## Usage
+
+```
+Usage: golarge [OPTIONS] <PATH>
+
+Look for files bigger than 1GiB from given directory path
+
+Options:
+  -o <string>     Output path (default: list.txt)
+  -j      	      Enable export to JSON file
+  -v      	      Display warnings & error instead of logging to file
+  -t      	      Enable concurrent file processing
+
+Examples:
+  golarge /foo/bar
+  golarge -v /bar
+  golarge -o list.txt -j /foo/bar
+  golarge -t /foo
+```
+
+### See help
 
 ```shell
-golarge -j /tmp
+golarge -h
+```
+
+### Search files at **/foo/bar**, save result to file **large_files.txt**.
+
+```shell
+golarge -o large_files.txt /foo/bar
+```
+
+### Search files at **/foo**, save result to json format (default: **list.json**).
+
+```shell
+golarge -j /foo
+```
+
+### Concurrent file processing (goroutines)
+
+Enabling concurrent processing can greatly decrease time to result on most machines with fast storage, it could be slower on old hardware and mechanical storage. When enabled, each file is processed in an independant thread (Goroutine).
+
+```shell
+golarge -t /bar
 ```
 
 ## Licence
 
-[GNU General Public License v3.0](LICENSE)
+[MIT](LICENSE)
+
+## Note
+
+[clarge](https://github.com/will666/clarge): Another implementation in C
